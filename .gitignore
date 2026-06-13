@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.cache/
+data/
+.env
+
+# Ignore video files in the videos/ folder
+videos/*
+!videos/.gitkeep

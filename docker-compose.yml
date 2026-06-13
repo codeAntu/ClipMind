@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  pipeline:
+    build: .
+    container_name: clipmind-pipeline
+    volumes:
+      - ./videos:/app/videos
+      - ./data:/app/data
+      - ./.cache:/app/.cache
+      # Cache downloaded whisper models on the host
+      - ./.cache/whisper:/root/.cache/whisper
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+
+  search:
+    build: .
+    container_name: clipmind-search
+    volumes:
+      - ./videos:/app/videos
+      - ./data:/app/data
+      - ./.cache:/app/.cache
+      - ./.cache/whisper:/root/.cache/whisper
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    entrypoint: ["npm", "run", "search", "--"]
