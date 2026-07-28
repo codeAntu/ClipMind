@@ -16,7 +16,6 @@ export async function getFileHash(filePath: string): Promise<string> {
 export function scanVideos(dir = config.videosDir): string[] {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
-    console.warn(`Created empty videos directory: ${dir}`);
     return [];
   }
 

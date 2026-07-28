@@ -11,15 +11,9 @@ function fakeVideo(partial: Partial<Video>): Video {
     filePath: 'demo.mp4',
     fileHash: 'abc',
     duration: 12,
-    audioExtracted: true,
-    framesExtracted: true,
-    ocrText: null,
-    ocrStatus: 'done',
-    transcription: null,
-    transcriptionStatus: 'done',
-    cleanedText: null,
+    text: null,
     tags: null,
-    taggingStatus: 'done',
+    status: 'done',
     createdAt: new Date(),
     updatedAt: new Date(),
     ...partial,
@@ -69,24 +63,22 @@ describe('search ranking', () => {
     const tagHit = fakeVideo({
       id: 1,
       tags: serializeTags(['python', 'django']),
-      cleanedText: 'hello world',
+      text: 'hello world',
       filePath: 'other.mp4',
     });
     const textHit = fakeVideo({
       id: 2,
       tags: serializeTags(['cooking']),
-      cleanedText: 'python tutorial basics',
+      text: 'python tutorial basics',
       filePath: 'food.mp4',
     });
 
     assert.ok(scoreVideo(tagHit, 'python') > scoreVideo(textHit, 'python'));
-
-    const ranked = rankVideos([textHit, tagHit], 'python');
-    assert.equal(ranked[0].id, 1);
+    assert.equal(rankVideos([textHit, tagHit], 'python')[0].id, 1);
   });
 
   it('returns empty when nothing matches', () => {
-    const video = fakeVideo({ tags: '["react"]', cleanedText: 'hooks' });
+    const video = fakeVideo({ tags: '["react"]', text: 'hooks' });
     assert.deepEqual(rankVideos([video], 'golang'), []);
   });
 });

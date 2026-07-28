@@ -2,78 +2,54 @@ import ffmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from '../config';
-import { errorMessage } from '../lib/errors';
 
-export interface MediaPaths {
-  framesDir: string;
-  audioPath: string;
-}
-
-export function getPaths(fileHash: string): MediaPaths {
+export function getPaths(fileHash: string) {
   return {
     framesDir: path.join(config.cacheDir, 'frames', fileHash),
     audioPath: path.join(config.cacheDir, 'audio', `${fileHash}.wav`),
   };
 }
 
-function hasFrameCache(framesDir: string): boolean {
-  if (!fs.existsSync(framesDir)) return false;
-  return fs.readdirSync(framesDir).some((f) => f.endsWith('.png'));
-}
-
-function hasAudioCache(audioPath: string): boolean {
-  return fs.existsSync(audioPath) && fs.statSync(audioPath).size > 0;
-}
-
-export function isMediaCacheReady(fileHash: string, expectAudio: boolean): boolean {
-  const { framesDir, audioPath } = getPaths(fileHash);
-  if (!hasFrameCache(framesDir)) return false;
-  if (expectAudio && !hasAudioCache(audioPath)) return false;
-  return true;
+function run(command: ffmpeg.FfmpegCommand): Promise<void> {
+  return new Promise((resolve, reject) => {
+    command.on('end', () => resolve()).on('error', reject).run();
+  });
 }
 
 function probeDuration(videoPath: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+    ffmpeg.ffprobe(videoPath, (err, meta) => {
       if (err) reject(err);
-      else resolve(metadata.format.duration || 0);
+      else resolve(meta.format.duration || 0);
     });
   });
 }
 
-async function extractFrames(
-  videoPath: string,
-  framesDir: string,
-  intervalSeconds: number
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+function clearCache(framesDir: string, audioPath: string) {
+  if (fs.existsSync(framesDir)) fs.rmSync(framesDir, { recursive: true, force: true });
+  if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+}
+
+async function extractFrames(videoPath: string, framesDir: string, everySeconds: number) {
+  await run(
     ffmpeg(videoPath)
-      .outputOptions(['-vf', `fps=1/${intervalSeconds}`])
+      .outputOptions(['-vf', `fps=1/${everySeconds}`])
       .output(path.join(framesDir, 'frame-%03d.png'))
-      .on('end', () => resolve())
-      .on('error', (err) =>
-        reject(new Error(`Frame extraction failed: ${err.message}`))
-      )
-      .run();
-  });
+  );
 }
 
 async function extractAudio(videoPath: string, audioPath: string): Promise<boolean> {
   try {
-    await new Promise<void>((resolve, reject) => {
+    await run(
       ffmpeg(videoPath)
         .noVideo()
         .audioCodec('pcm_s16le')
         .audioFrequency(16000)
         .audioChannels(1)
         .output(audioPath)
-        .on('end', () => resolve())
-        .on('error', (err) => reject(err))
-        .run();
-    });
+    );
     return true;
-  } catch (err) {
-    console.warn(`No audio track extracted: ${errorMessage(err)}`);
+  } catch {
     if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
     return false;
   }
@@ -81,39 +57,27 @@ async function extractAudio(videoPath: string, audioPath: string): Promise<boole
 
 export async function extractMedia(videoPath: string, fileHash: string) {
   const { framesDir, audioPath } = getPaths(fileHash);
-  const interval = config.ocrIntervalSeconds;
 
-  if (fs.existsSync(framesDir)) {
-    fs.rmSync(framesDir, { recursive: true, force: true });
-  }
-  if (fs.existsSync(audioPath)) {
-    fs.unlinkSync(audioPath);
-  }
-
+  clearCache(framesDir, audioPath);
   fs.mkdirSync(framesDir, { recursive: true });
   fs.mkdirSync(path.dirname(audioPath), { recursive: true });
 
-  const duration = await probeDuration(videoPath);
-
-  console.log(`Extracting frames (1 every ${interval}s)...`);
-  await extractFrames(videoPath, framesDir, interval);
-
-  console.log('Extracting audio (16kHz mono)...');
+  const duration = Math.round(await probeDuration(videoPath));
+  await extractFrames(videoPath, framesDir, config.ocrIntervalSeconds);
   const hasAudio = await extractAudio(videoPath, audioPath);
 
   return {
     framesDir,
     audioPath: hasAudio ? audioPath : '',
-    duration: Math.round(duration),
+    duration,
   };
 }
 
-export function cleanupMediaCache(fileHash: string): void {
+export function cleanupMediaCache(fileHash: string) {
   const { framesDir, audioPath } = getPaths(fileHash);
   try {
-    if (fs.existsSync(framesDir)) fs.rmSync(framesDir, { recursive: true, force: true });
-    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-  } catch (err) {
-    console.warn(`Cache cleanup failed: ${errorMessage(err)}`);
+    clearCache(framesDir, audioPath);
+  } catch {
+    // ignore cleanup errors
   }
 }

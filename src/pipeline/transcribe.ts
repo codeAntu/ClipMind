@@ -11,10 +11,7 @@ export async function transcribeAudio(
   audioPath: string,
   fileHash: string
 ): Promise<string> {
-  if (!audioPath || !fs.existsSync(audioPath)) {
-    console.log('[Whisper] No audio — skipping.');
-    return '';
-  }
+  if (!audioPath || !fs.existsSync(audioPath)) return '';
 
   const outputDir = path.join(config.cacheDir, 'transcripts', fileHash);
   const txtFile = path.join(outputDir, `${path.basename(audioPath, '.wav')}.txt`);
@@ -23,8 +20,6 @@ export async function transcribeAudio(
   if (fs.existsSync(txtFile)) {
     return fs.readFileSync(txtFile, 'utf8').trim();
   }
-
-  console.log(`[Whisper] Transcribing with model "${config.whisperModel}"...`);
 
   try {
     await execFileAsync(

@@ -1,1 +1,1 @@
-export type StepStatus = 'pending' | 'processing' | 'done' | 'failed';
+export type VideoStatus = 'pending' | 'done' | 'failed';

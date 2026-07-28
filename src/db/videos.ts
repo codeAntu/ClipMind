@@ -14,11 +14,7 @@ export function createVideo(filePath: string, fileHash: string): Video {
     .values({
       filePath,
       fileHash,
-      audioExtracted: false,
-      framesExtracted: false,
-      ocrStatus: 'pending',
-      transcriptionStatus: 'pending',
-      taggingStatus: 'pending',
+      status: 'pending',
       createdAt: now,
       updatedAt: now,
     })
@@ -45,16 +41,15 @@ export function findOrCreateVideo(filePath: string, fileHash: string) {
   return { video: createVideo(filePath, fileHash), created: true as const };
 }
 
-/** Crash mid-step can leave status as "processing" — treat as pending. */
-export function clearStuckProcessing(video: Video): Video {
-  const patch: VideoUpdate = {};
-  if (video.ocrStatus === 'processing') patch.ocrStatus = 'pending';
-  if (video.transcriptionStatus === 'processing') patch.transcriptionStatus = 'pending';
-  if (video.taggingStatus === 'processing') patch.taggingStatus = 'pending';
+export function saveResult(
+  fileHash: string,
+  result: { duration: number; text: string; tags: string }
+): void {
+  updateVideo(fileHash, { ...result, status: 'done' });
+}
 
-  if (Object.keys(patch).length === 0) return video;
-  updateVideo(video.fileHash, patch);
-  return { ...video, ...patch };
+export function markFailed(fileHash: string): void {
+  updateVideo(fileHash, { status: 'failed' });
 }
 
 export function listTagRows() {

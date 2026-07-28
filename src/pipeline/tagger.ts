@@ -27,8 +27,6 @@ ${text}
 export async function generateTags(cleanedText: string): Promise<string[]> {
   if (!cleanedText.trim()) return ['untagged', 'silent-video'];
 
-  console.log(`[Tagger] Calling ${config.geminiModel} (${cleanedText.length} chars)...`);
-
   const response = await getClient().models.generateContent({
     model: config.geminiModel,
     contents: PROMPT(cleanedText),

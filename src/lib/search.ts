@@ -17,7 +17,7 @@ export function scoreVideo(video: Video, query: string): number {
   const tokens = tokensOf(q);
   const tags = parseTags(video.tags).map((t) => t.toLowerCase());
   const filePath = (video.filePath || '').toLowerCase();
-  const text = (video.cleanedText || '').toLowerCase();
+  const text = (video.text || '').toLowerCase();
 
   let score = 0;
 

@@ -10,21 +10,22 @@ export const sqlite = new Database(config.databasePath);
 export const db = drizzle(sqlite);
 
 export function ensureSchema(): void {
+  const columns = sqlite.prepare('PRAGMA table_info(videos)').all() as Array<{ name: string }>;
+  const isLegacy = columns.some((c) => c.name === 'ocr_status' || c.name === 'cleaned_text');
+
+  if (isLegacy) {
+    sqlite.exec('DROP TABLE videos');
+  }
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS videos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       file_path TEXT NOT NULL UNIQUE,
       file_hash TEXT NOT NULL,
       duration INTEGER,
-      audio_extracted INTEGER NOT NULL DEFAULT 0,
-      frames_extracted INTEGER NOT NULL DEFAULT 0,
-      ocr_text TEXT,
-      ocr_status TEXT NOT NULL DEFAULT 'pending',
-      transcription TEXT,
-      transcription_status TEXT NOT NULL DEFAULT 'pending',
-      cleaned_text TEXT,
+      text TEXT,
       tags TEXT,
-      tagging_status TEXT NOT NULL DEFAULT 'pending',
+      status TEXT NOT NULL DEFAULT 'pending',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
