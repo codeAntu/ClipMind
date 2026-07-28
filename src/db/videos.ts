@@ -1,6 +1,7 @@
-import { eq, like, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from './index';
 import { videos, type Video, type VideoUpdate } from './schema';
+import { rankVideos } from '../lib/search';
 
 export function findByHash(fileHash: string): Video | undefined {
   return db.select().from(videos).where(eq(videos.fileHash, fileHash)).get();
@@ -34,25 +35,36 @@ export function updateVideo(fileHash: string, fields: VideoUpdate): void {
 
 export function findOrCreateVideo(filePath: string, fileHash: string) {
   const existing = findByHash(fileHash);
-  if (existing) return { video: existing, created: false as const };
+  if (existing) {
+    if (existing.filePath !== filePath) {
+      updateVideo(fileHash, { filePath });
+      return { video: { ...existing, filePath }, created: false as const };
+    }
+    return { video: existing, created: false as const };
+  }
   return { video: createVideo(filePath, fileHash), created: true as const };
+}
+
+/** Crash mid-step can leave status as "processing" — treat as pending. */
+export function clearStuckProcessing(video: Video): Video {
+  const patch: VideoUpdate = {};
+  if (video.ocrStatus === 'processing') patch.ocrStatus = 'pending';
+  if (video.transcriptionStatus === 'processing') patch.transcriptionStatus = 'pending';
+  if (video.taggingStatus === 'processing') patch.taggingStatus = 'pending';
+
+  if (Object.keys(patch).length === 0) return video;
+  updateVideo(video.fileHash, patch);
+  return { ...video, ...patch };
 }
 
 export function listTagRows() {
   return db.select({ tags: videos.tags }).from(videos).all();
 }
 
+export function listAllVideos(): Video[] {
+  return db.select().from(videos).all();
+}
+
 export function searchVideos(query: string): Video[] {
-  const pattern = `%${query.replace(/[%_\\]/g, '\\$&')}%`;
-  return db
-    .select()
-    .from(videos)
-    .where(
-      or(
-        like(videos.tags, pattern),
-        like(videos.cleanedText, pattern),
-        like(videos.filePath, pattern)
-      )
-    )
-    .all();
+  return rankVideos(listAllVideos(), query);
 }

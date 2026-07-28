@@ -41,8 +41,8 @@ RUN npm install
 COPY tsconfig.json ./
 COPY src/ ./src/
 
-# Build TypeScript
-RUN npm run build || true
+# Build TypeScript (fail the image build if compile fails)
+RUN npm run build
 
 # Define volumes for external data
 VOLUME [ "/app/videos", "/app/data", "/app/.cache" ]

@@ -3,12 +3,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { config } from '../config';
 
-export function getFileHash(filePath: string): string {
-  const { size, mtimeMs } = fs.statSync(filePath);
-  return crypto
-    .createHash('md5')
-    .update(`${filePath}:${size}:${mtimeMs}`)
-    .digest('hex');
+export async function getFileHash(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('md5');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
 }
 
 export function scanVideos(dir = config.videosDir): string[] {

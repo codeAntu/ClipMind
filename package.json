@@ -6,7 +6,8 @@
   "scripts": {
     "start": "ts-node src/index.ts",
     "search": "ts-node src/search.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^0.2.0",
@@ -22,6 +23,7 @@
     "@types/node": "^20.12.7",
     "drizzle-kit": "^0.20.17",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.4.5"
   }
 }

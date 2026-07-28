@@ -16,6 +16,22 @@ export function getPaths(fileHash: string): MediaPaths {
   };
 }
 
+function hasFrameCache(framesDir: string): boolean {
+  if (!fs.existsSync(framesDir)) return false;
+  return fs.readdirSync(framesDir).some((f) => f.endsWith('.png'));
+}
+
+function hasAudioCache(audioPath: string): boolean {
+  return fs.existsSync(audioPath) && fs.statSync(audioPath).size > 0;
+}
+
+export function isMediaCacheReady(fileHash: string, expectAudio: boolean): boolean {
+  const { framesDir, audioPath } = getPaths(fileHash);
+  if (!hasFrameCache(framesDir)) return false;
+  if (expectAudio && !hasAudioCache(audioPath)) return false;
+  return true;
+}
+
 function probeDuration(videoPath: string): Promise<number> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(videoPath, (err, metadata) => {
@@ -66,6 +82,13 @@ async function extractAudio(videoPath: string, audioPath: string): Promise<boole
 export async function extractMedia(videoPath: string, fileHash: string) {
   const { framesDir, audioPath } = getPaths(fileHash);
   const interval = config.ocrIntervalSeconds;
+
+  if (fs.existsSync(framesDir)) {
+    fs.rmSync(framesDir, { recursive: true, force: true });
+  }
+  if (fs.existsSync(audioPath)) {
+    fs.unlinkSync(audioPath);
+  }
 
   fs.mkdirSync(framesDir, { recursive: true });
   fs.mkdirSync(path.dirname(audioPath), { recursive: true });

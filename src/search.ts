@@ -1,6 +1,7 @@
 import { ensureSchema } from './db';
 import { listTagRows, searchVideos } from './db/videos';
 import { formatDuration, parseTags, truncatePath } from './lib/format';
+import { scoreVideo } from './lib/search';
 
 function printTagInventory() {
   console.log('Usage: npm run search -- "<query>"');
@@ -41,11 +42,13 @@ function printResults(query: string) {
   console.log(line);
 
   for (const row of results) {
+    const score = scoreVideo(row, query);
     console.log(
       String(row.id).padEnd(5) + ' | ' +
       formatDuration(row.duration).padEnd(8) + ' | ' +
       truncatePath(row.filePath).padEnd(40) + ' | ' +
-      parseTags(row.tags).join(', ')
+      parseTags(row.tags).join(', ') +
+      `  [score ${score}]`
     );
   }
 
