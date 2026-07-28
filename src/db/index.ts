@@ -1,25 +1,15 @@
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+import { config } from '../config';
 
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../../data/clipmind.db');
+fs.mkdirSync(path.dirname(config.databasePath), { recursive: true });
 
-// Ensure db directory exists
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-export const sqlite = new Database(dbPath);
+export const sqlite = new Database(config.databasePath);
 export const db = drizzle(sqlite);
 
-export function runMigrations() {
-  console.log('Running database migrations...');
-  const migrationsFolder = path.join(__dirname, '../../drizzle');
-  
-  // Ensure table exists via raw SQL as a robust fallback
+export function ensureSchema(): void {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS videos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,16 +29,4 @@ export function runMigrations() {
       updated_at INTEGER NOT NULL
     );
   `);
-  console.log('Database schema verified.');
-
-  // Attempt standard Drizzle migration if the migrations folder exists
-  if (fs.existsSync(migrationsFolder) && fs.readdirSync(migrationsFolder).length > 0) {
-    try {
-      migrate(db, { migrationsFolder });
-      console.log('Drizzle migrations completed successfully.');
-    } catch (err) {
-      console.error('Failed to run Drizzle migrations, falling back to manual schema:', err);
-    }
-  }
 }
-export * as schema from './schema';

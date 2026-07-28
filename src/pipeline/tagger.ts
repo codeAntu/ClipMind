@@ -1,71 +1,53 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import { config, requireGeminiApiKey } from '../config';
+
+const SKIP = new Set(['shorts', 'video']);
+
+let client: GoogleGenAI | null = null;
+
+function getClient() {
+  return (client ??= new GoogleGenAI({ apiKey: requireGeminiApiKey() }));
+}
+
+const PROMPT = (text: string) => `
+Generate 5-10 highly relevant, specific, searchable tags from this video text (OCR + transcript).
+
+Rules:
+- lowercase only
+- multi-word tags use hyphens (e.g. web-development)
+- no generic tags like video, shorts, text, tutorial
+- focus on concepts, tech, languages, products, topics
+
+Text:
+"""
+${text}
+"""
+`.trim();
 
 export async function generateTags(cleanedText: string): Promise<string[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is not set. Please add it to your .env file.');
-  }
+  if (!cleanedText.trim()) return ['untagged', 'silent-video'];
 
-  // Initialize the Google Gen AI client
-  const ai = new GoogleGenAI({ apiKey });
+  console.log(`[Tagger] Calling ${config.geminiModel} (${cleanedText.length} chars)...`);
 
-  if (!cleanedText || cleanedText.trim().length === 0) {
-    console.log('[Tagger] Cleaned text is empty. Returning fallback tags.');
-    return ['untagged', 'silent-video'];
-  }
+  const response = await getClient().models.generateContent({
+    model: config.geminiModel,
+    contents: PROMPT(cleanedText),
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+    },
+  });
 
-  console.log(`[Tagger] Requesting tags from Gemini 1.5 Flash (input text size: ${cleanedText.length} chars)...`);
+  if (!response.text) throw new Error('Empty response from Gemini.');
 
-  const prompt = `
-Generate 5-10 highly relevant, specific, and searchable tags based on the following text content extracted from a short video via OCR and audio transcription.
+  const parsed = JSON.parse(response.text.trim());
+  if (!Array.isArray(parsed)) throw new Error('Gemini did not return a tag array.');
 
-Requirements:
-1. Tags must be in lowercase.
-2. Tags containing multiple words should be hyphenated (e.g. "web-development", "react-tutorial").
-3. Do NOT output generic tags (e.g. "video", "shorts", "text", "short-video", "tutorial").
-4. Target key concepts, technologies, programming languages, products, APIs, or core topics mentioned or shown in the video.
-
-Text Content:
-"""
-${cleanedText}
-"""
-`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.STRING
-          },
-          description: 'List of 5 to 10 search tags.'
-        }
-      }
-    });
-
-    const responseText = response.text;
-    if (!responseText) {
-      throw new Error('Empty response from Gemini API.');
-    }
-
-    const tags = JSON.parse(responseText.trim());
-    if (Array.isArray(tags)) {
-      const normalizedTags = tags
-        .map((t: string) => t.trim().toLowerCase())
-        .filter(t => t.length > 0 && t !== 'shorts' && t !== 'video');
-      console.log(`[Tagger] Successfully generated ${normalizedTags.length} tags: [${normalizedTags.join(', ')}]`);
-      return normalizedTags;
-    }
-
-    throw new Error('API returned JSON that was not a string array.');
-  } catch (err: any) {
-    console.error('[Tagger Error] Gemini tagging failed:', err.message);
-    // Return a fallback tag so the pipeline doesn't break entirely if the API is down or throttled
-    console.warn('[Tagger] Using fallback tags due to API failure.');
-    return ['untagged', 'api-failed'];
-  }
+  return parsed
+    .filter((t): t is string => typeof t === 'string')
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t && !SKIP.has(t));
 }

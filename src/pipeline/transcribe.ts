@@ -1,58 +1,51 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { promisify } from 'util';
+import { config } from '../config';
+import { errorMessage } from '../lib/errors';
 
-export async function transcribeAudio(audioPath: string, fileHash: string): Promise<string> {
+const execFileAsync = promisify(execFile);
+
+export async function transcribeAudio(
+  audioPath: string,
+  fileHash: string
+): Promise<string> {
   if (!audioPath || !fs.existsSync(audioPath)) {
-    console.log(`[Whisper] No audio track available for hash ${fileHash}. Skipping transcription.`);
+    console.log('[Whisper] No audio — skipping.');
     return '';
   }
 
-  // Model configured via env or default to 'base'
-  const model = process.env.WHISPER_MODEL || 'base';
-  
-  // Set up temp directory for Whisper output
-  const outputDir = path.resolve(process.cwd(), '.cache', 'transcripts', fileHash);
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+  const outputDir = path.join(config.cacheDir, 'transcripts', fileHash);
+  const txtFile = path.join(outputDir, `${path.basename(audioPath, '.wav')}.txt`);
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  if (fs.existsSync(txtFile)) {
+    return fs.readFileSync(txtFile, 'utf8').trim();
   }
 
-  const audioFileName = path.basename(audioPath, '.wav'); // e.g. [fileHash]
-  const expectedTxtFile = path.join(outputDir, `${audioFileName}.txt`);
+  console.log(`[Whisper] Transcribing with model "${config.whisperModel}"...`);
 
-  // If already transcribed and stored in cache directory, we can read it directly
-  if (fs.existsSync(expectedTxtFile)) {
-    console.log(`[Whisper] Found cached transcription file: ${expectedTxtFile}`);
-    return fs.readFileSync(expectedTxtFile, 'utf8').trim();
+  try {
+    await execFileAsync(
+      'whisper',
+      [
+        audioPath,
+        '--model', config.whisperModel,
+        '--output_dir', outputDir,
+        '--output_format', 'txt',
+      ],
+      { timeout: config.whisperTimeoutMs, maxBuffer: 10 * 1024 * 1024 }
+    );
+  } catch (err) {
+    throw new Error(`Whisper failed: ${errorMessage(err)}`);
   }
 
-  console.log(`[Whisper] Transcribing ${audioPath} using Whisper model "${model}"...`);
-
-  // Build command: whisper <audio> --model <model> --output_dir <dir> --output_format txt
-  // We specify --language en if we assume mostly English or auto-detect
-  const command = `whisper "${audioPath}" --model ${model} --output_dir "${outputDir}" --output_format txt`;
-
-  await new Promise<void>((resolve, reject) => {
-    // Large timeout for transcription on slower CPUs
-    exec(command, { timeout: 300000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[Whisper Error] CLI command failed: ${error.message}`);
-        console.error(`[Whisper Error details] Stderr: ${stderr}`);
-        return reject(error);
-      }
-      resolve();
-    });
-  });
-
-  if (fs.existsSync(expectedTxtFile)) {
-    const text = fs.readFileSync(expectedTxtFile, 'utf8').trim();
-    // Clean up transcription file after reading
-    try {
-      fs.unlinkSync(expectedTxtFile);
-      fs.rmdirSync(outputDir);
-    } catch (_) {}
-    return text;
+  if (!fs.existsSync(txtFile)) {
+    throw new Error(`Whisper output missing: ${txtFile}`);
   }
 
-  throw new Error(`Whisper completed but transcription file was not found at ${expectedTxtFile}`);
+  const text = fs.readFileSync(txtFile, 'utf8').trim();
+  fs.rmSync(outputDir, { recursive: true, force: true });
+  return text;
 }

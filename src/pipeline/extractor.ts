@@ -1,101 +1,96 @@
 import ffmpeg from 'fluent-ffmpeg';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+import { config } from '../config';
+import { errorMessage } from '../lib/errors';
 
-export interface ExtractionResult {
+export interface MediaPaths {
   framesDir: string;
   audioPath: string;
-  duration: number;
 }
 
-export function getPaths(fileHash: string) {
-  // Resolved relative to /app/src/pipeline or wherever the build is
-  // In Docker, it's run from /app/dist/ or /app/src/
-  const cacheBase = path.resolve(process.cwd(), '.cache');
+export function getPaths(fileHash: string): MediaPaths {
   return {
-    framesDir: path.join(cacheBase, 'frames', fileHash),
-    audioPath: path.join(cacheBase, 'audio', `${fileHash}.wav`),
+    framesDir: path.join(config.cacheDir, 'frames', fileHash),
+    audioPath: path.join(config.cacheDir, 'audio', `${fileHash}.wav`),
   };
 }
 
-export async function extractMedia(
-  videoPath: string,
-  fileHash: string,
-  intervalSeconds: number = 2
-): Promise<ExtractionResult> {
-  const { framesDir, audioPath } = getPaths(fileHash);
+function probeDuration(videoPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) reject(err);
+      else resolve(metadata.format.duration || 0);
+    });
+  });
+}
 
-  // Ensure directories exist
+async function extractFrames(
+  videoPath: string,
+  framesDir: string,
+  intervalSeconds: number
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg(videoPath)
+      .outputOptions(['-vf', `fps=1/${intervalSeconds}`])
+      .output(path.join(framesDir, 'frame-%03d.png'))
+      .on('end', () => resolve())
+      .on('error', (err) =>
+        reject(new Error(`Frame extraction failed: ${err.message}`))
+      )
+      .run();
+  });
+}
+
+async function extractAudio(videoPath: string, audioPath: string): Promise<boolean> {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(videoPath)
+        .noVideo()
+        .audioCodec('pcm_s16le')
+        .audioFrequency(16000)
+        .audioChannels(1)
+        .output(audioPath)
+        .on('end', () => resolve())
+        .on('error', (err) => reject(err))
+        .run();
+    });
+    return true;
+  } catch (err) {
+    console.warn(`No audio track extracted: ${errorMessage(err)}`);
+    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+    return false;
+  }
+}
+
+export async function extractMedia(videoPath: string, fileHash: string) {
+  const { framesDir, audioPath } = getPaths(fileHash);
+  const interval = config.ocrIntervalSeconds;
+
   fs.mkdirSync(framesDir, { recursive: true });
   fs.mkdirSync(path.dirname(audioPath), { recursive: true });
 
-  // Get video metadata (duration)
-  const duration = await new Promise<number>((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
-      if (err) return reject(err);
-      resolve(metadata.format.duration || 0);
-    });
-  });
+  const duration = await probeDuration(videoPath);
 
-  console.log(`Extracting frames from ${videoPath} at 1 frame every ${intervalSeconds}s...`);
+  console.log(`Extracting frames (1 every ${interval}s)...`);
+  await extractFrames(videoPath, framesDir, interval);
 
-  // Extract frames
-  await new Promise<void>((resolve, reject) => {
-    ffmpeg(videoPath)
-      .outputOptions([
-        '-vf', `fps=1/${intervalSeconds}`
-      ])
-      .output(path.join(framesDir, 'frame-%03d.png'))
-      .on('end', () => {
-        resolve();
-      })
-      .on('error', (err) => {
-        reject(new Error(`FFmpeg frame extraction failed: ${err.message}`));
-      })
-      .run();
-  });
-
-  console.log(`Extracting audio from ${videoPath} (16kHz mono)...`);
-
-  // Extract audio (16kHz mono WAV for Whisper)
-  const audioExists = await new Promise<boolean>((resolve) => {
-    ffmpeg(videoPath)
-      .noVideo()
-      .audioCodec('pcm_s16le')
-      .audioFrequency(16000)
-      .audioChannels(1)
-      .output(audioPath)
-      .on('end', () => {
-        resolve(true);
-      })
-      .on('error', (err) => {
-        console.warn(`Warning: Could not extract audio track for ${videoPath} (${err.message}). Video might be silent.`);
-        // Clean up audio path if it was partially written
-        if (fs.existsSync(audioPath)) {
-          fs.unlinkSync(audioPath);
-        }
-        resolve(false);
-      })
-      .run();
-  });
+  console.log('Extracting audio (16kHz mono)...');
+  const hasAudio = await extractAudio(videoPath, audioPath);
 
   return {
     framesDir,
-    audioPath: audioExists ? audioPath : '',
+    audioPath: hasAudio ? audioPath : '',
     duration: Math.round(duration),
   };
 }
-export function cleanupMediaCache(fileHash: string) {
+
+export function cleanupMediaCache(fileHash: string): void {
   const { framesDir, audioPath } = getPaths(fileHash);
   try {
-    if (fs.existsSync(framesDir)) {
-      fs.rmSync(framesDir, { recursive: true, force: true });
-    }
-    if (fs.existsSync(audioPath)) {
-      fs.unlinkSync(audioPath);
-    }
-    console.log(`Cleaned up temporary extraction cache for hash ${fileHash}`);
-  } catch (err: any) {
-    console.warn(`Failed to clean up cache for hash ${fileHash}: ${err.message}`);
+    if (fs.existsSync(framesDir)) fs.rmSync(framesDir, { recursive: true, force: true });
+    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+  } catch (err) {
+    console.warn(`Cache cleanup failed: ${errorMessage(err)}`);
   }
 }
