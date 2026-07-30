@@ -1,10 +1,14 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from './index';
 import { videos, type Video, type VideoUpdate } from './schema';
 import { rankVideos } from '../lib/search';
 
 export function findByHash(fileHash: string): Video | undefined {
   return db.select().from(videos).where(eq(videos.fileHash, fileHash)).get();
+}
+
+export function findById(id: number): Video | undefined {
+  return db.select().from(videos).where(eq(videos.id, id)).get();
 }
 
 export function createVideo(filePath: string, fileHash: string): Video {
@@ -57,7 +61,7 @@ export function listTagRows() {
 }
 
 export function listAllVideos(): Video[] {
-  return db.select().from(videos).all();
+  return db.select().from(videos).orderBy(desc(videos.id)).all();
 }
 
 export function searchVideos(query: string): Video[] {

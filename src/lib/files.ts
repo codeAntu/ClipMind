@@ -28,6 +28,7 @@ export function scanVideos(dir = config.videosDir): string[] {
     const stat = fs.statSync(fullPath);
 
     if (stat.isDirectory()) {
+      if (name.startsWith('_')) continue;
       results.push(...scanVideos(fullPath));
       continue;
     }

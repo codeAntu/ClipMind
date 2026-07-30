@@ -8,8 +8,8 @@ services:
       - ./videos:/app/videos
       - ./data:/app/data
       - ./.cache:/app/.cache
-      # Cache downloaded whisper models on the host
       - ./.cache/whisper:/root/.cache/whisper
+      - ./src:/app/src
     env_file:
       - .env
     environment:
@@ -23,8 +23,25 @@ services:
       - ./data:/app/data
       - ./.cache:/app/.cache
       - ./.cache/whisper:/root/.cache/whisper
+      - ./src:/app/src
     env_file:
       - .env
     environment:
       - NODE_ENV=production
     entrypoint: ["npm", "run", "search", "--"]
+
+  ui:
+    build: .
+    container_name: clipmind-ui
+    ports:
+      - "3456:3456"
+    volumes:
+      - ./videos:/app/videos
+      - ./data:/app/data
+      - ./src:/app/src
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3456
+    command: ["npx", "tsx", "src/web/server.ts"]

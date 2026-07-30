@@ -10,13 +10,14 @@ function getClient() {
 }
 
 const PROMPT = (text: string) => `
-Generate 5-10 highly relevant, specific, searchable tags from this video text (OCR + transcript).
+Generate 10-20 highly relevant, specific, searchable tags from this video text (OCR + transcript).
 
 Rules:
 - lowercase only
 - multi-word tags use hyphens (e.g. web-development)
 - no generic tags like video, shorts, text, tutorial
-- focus on concepts, tech, languages, products, topics
+- cover topics, emotions, people/places, activities, and any tech/products mentioned
+- prefer useful search keywords over vague words
 
 Text:
 """

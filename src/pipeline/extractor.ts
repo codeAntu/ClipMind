@@ -64,7 +64,10 @@ export async function extractMedia(videoPath: string, fileHash: string) {
 
   const duration = Math.round(await probeDuration(videoPath));
   await extractFrames(videoPath, framesDir, config.ocrIntervalSeconds);
-  const hasAudio = await extractAudio(videoPath, audioPath);
+
+  const hasAudio = config.enableWhisper
+    ? await extractAudio(videoPath, audioPath)
+    : false;
 
   return {
     framesDir,
